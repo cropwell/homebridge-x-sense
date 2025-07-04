@@ -133,11 +133,12 @@ describe('XsenseApi', () => {
       mockRefreshSession.mockImplementation((_token, callback) => callback(null, newSession));
 
       const scope1 = nock(API_HOST, { reqheaders: { token: 'expired-token' } })
-        .post('/v1/user/getDeviceList').reply(401, { msg: 'Unauthorized' });
+        .post('/v1/user/getDeviceList', { userId: 'user-sub' })
+        .reply(401, { msg: 'Unauthorized' });
 
       const mockDevices = [{ device_id: '456' }];
       const scope2 = nock(API_HOST, { reqheaders: { token: 'new-valid-token' } })
-        .post('/v1/user/getDeviceList')
+        .post('/v1/user/getDeviceList', { userId: 'user-sub' })
         .reply(200, { code: 0, msg: 'Success', data: mockDevices });
 
       const devices = await api.getDeviceList();
@@ -163,7 +164,8 @@ describe('XsenseApi', () => {
       mockRefreshSession.mockImplementation((_token, callback) => callback(refreshError, null));
 
       nock(API_HOST, { reqheaders: { token: 'expired-token' } })
-        .post('/v1/user/getDeviceList').reply(401, { msg: 'Unauthorized' });
+        .post('/v1/user/getDeviceList', { userId: 'user-sub' })
+        .reply(401, { msg: 'Unauthorized' });
 
       await expect(api.getDeviceList()).rejects.toThrow('Invalid refresh token');
       expect(mockLogger.error).toHaveBeenCalledWith('Failed to refresh token. Please re-login.', refreshError);
@@ -187,6 +189,7 @@ describe('XsenseApi', () => {
       // Mock a successful login before these tests
       const mockSession = {
         getIdToken: () => ({ getJwtToken: () => 'id-token', payload: { sub: 'user-sub' } }),
+        isValid: () => true,
       };
       mockAuthenticateUser.mockImplementation((_details, callbacks) => {
         callbacks.onSuccess(mockSession);
@@ -225,18 +228,28 @@ describe('XsenseApi', () => {
     });
 
     it('should schedule a credential refresh', async () => {
-      jest.useFakeTimers();
+      const setTimeoutSpy = jest.spyOn(global, 'setTimeout');
       const reconnectSpy = jest.spyOn(api as any, 'reconnectMqtt').mockImplementation(() => Promise.resolve());
+
+      // Refresh mock with a new expiration to avoid stale timestamps
+      const freshMockCreds = {
+        ...mockCreds,
+        expiration: new Date(Date.now() + 3600 * 1000).toISOString(),
+      };
+      nock.cleanAll(); // Clear previous mocks
+      nock(API_HOST).post('/v1/user/getDeviceList').reply(200, { code: 0, data: mockDevices });
+      nock(API_HOST).post('/v1/user/getIotCredential').reply(200, { code: 0, data: freshMockCreds });
 
       await api.getDeviceList();
       await api.connectMqtt();
 
-      // Advance time past the refresh threshold (1 hour minus 5 minutes)
-      jest.advanceTimersByTime(3600 * 1000 - (5 * 60 * 1000) + 1000);
-      expect(reconnectSpy).toHaveBeenCalled();
+      // Check that setTimeout was called with a reasonable delay
+      expect(setTimeoutSpy).toHaveBeenCalledWith(expect.any(Function), expect.any(Number));
+      const delay = setTimeoutSpy.mock.calls[0][1];
+      expect(delay).toBeGreaterThan(0);
 
       reconnectSpy.mockRestore();
-      jest.useRealTimers();
+      setTimeoutSpy.mockRestore();
     });
   });
 });

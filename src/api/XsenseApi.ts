@@ -24,7 +24,7 @@ export class XsenseApi extends EventEmitter {
 
   constructor(
     private readonly email: string,
-    private readonly password,
+    private readonly password: string,
     log: Logger,
   ) {
     super();
@@ -51,7 +51,7 @@ export class XsenseApi extends EventEmitter {
 
     this.http.interceptors.request.use(
       (config) => {
-        if (this.session?.isValid() && config.headers) {
+        if (this.session && config.headers) {
           config.headers['token'] = this.session.getIdToken().getJwtToken();
         }
         return config;
@@ -170,7 +170,7 @@ export class XsenseApi extends EventEmitter {
 
       this.log.info(`Connecting to MQTT broker at wss://${creds.iotEndpoint}/mqtt`);
 
-      this.mqttClient = mqttConnect({
+      this.mqttClient = mqttConnect(({
         host: creds.iotEndpoint,
         protocol: 'wss',
         clientId: `homebridge-xsense_${Math.random().toString(16).substring(2, 10)}`,
@@ -178,7 +178,7 @@ export class XsenseApi extends EventEmitter {
         secretAccessKey: creds.secretKey,
         sessionToken: creds.sessionToken,
         reconnectPeriod: 5000,
-      });
+      } as any));
 
       this.mqttClient.on('connect', () => {
         this.log.info('MQTT client connected.');
