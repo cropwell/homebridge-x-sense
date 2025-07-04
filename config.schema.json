@@ -1,0 +1,30 @@
+{
+  "pluginAlias": "X-Sense",
+  "pluginType": "platform",
+  "singular": true,
+  "schema": {
+    "type": "object",
+    "properties": {
+      "username": {
+        "title": "Email",
+        "type": "string",
+        "required": true,
+        "description": "Your X-Sense account email address."
+      },
+      "password": {
+        "title": "Password",
+        "type": "string",
+        "required": true,
+        "description": "Your X-Sense account password."
+      },
+      "pollingInterval": {
+        "title": "Polling Interval (minutes)",
+        "type": "integer",
+        "default": 15,
+        "minimum": 5,
+        "required": false,
+        "description": "How often to poll for device status updates (in minutes)."
+      }
+    }
+  }
+}
