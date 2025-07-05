@@ -8,9 +8,9 @@ import {
   CognitoUserSession,
 } from 'amazon-cognito-identity-js';
 import { MqttClient, connect as mqttConnect } from 'mqtt';
-import { createHmac } from 'crypto';
+import { createHmac, createHash } from 'crypto';
 import { API_HOST, CLIENT_TYPE, APP_VERSION, APP_CODE } from './constants';
-import { DeviceInfo, GetDeviceListResponse, GetIotCredentialResponse, IotCredentials, GetClientInfoResponse, ClientInfo } from './types';
+import { DeviceInfo, IotCredentials, ClientInfo } from './types';
 
 export class XsenseApi extends EventEmitter {
   private readonly log: Logger;
@@ -35,6 +35,57 @@ export class XsenseApi extends EventEmitter {
       throw new Error('Client secret not available');
     }
     return createHmac('sha256', this.clientSecret).update(data, 'utf8').digest('base64');
+  }
+
+  private calculateMac(data: Record<string, any>): string {
+    if (!this.clientSecret) {
+      throw new Error('Client secret not available');
+    }
+
+    const values: string[] = [];
+    for (const key of Object.keys(data)) {
+      const value = (data as any)[key];
+      if (Array.isArray(value)) {
+        if (value.length > 0 && typeof value[0] === 'string') {
+          values.push(...value);
+        } else {
+          values.push(JSON.stringify(value));
+        }
+      } else if (typeof value === 'object' && value !== null) {
+        values.push(JSON.stringify(value));
+      } else if (value !== undefined && value !== null) {
+        values.push(String(value));
+      }
+    }
+
+    const concatenated = values.join('');
+    const md5 = createHash('md5');
+    md5.update(Buffer.from(concatenated, 'utf8'));
+    md5.update(this.clientSecret);
+    return md5.digest('hex');
+  }
+
+  private async apiCall<T>(code: string, data: Record<string, any>, unauth = false): Promise<T> {
+    const payload = {
+      ...data,
+      clientType: CLIENT_TYPE,
+      mac: unauth ? 'abcdefg' : this.calculateMac(data),
+      appVersion: APP_VERSION,
+      bizCode: code,
+      appCode: APP_CODE,
+    };
+
+    const headers: Record<string, string> = {};
+    if (!unauth && this.session) {
+      headers['Authorization'] = this.session.getAccessToken().getJwtToken();
+    }
+
+    const response = await this.http.post('/app', payload, { headers });
+
+    if (response.data.reCode !== 200) {
+      throw new Error(response.data.reMsg);
+    }
+    return response.data.reData as T;
   }
 
   private wrapRequest() {
@@ -72,8 +123,8 @@ export class XsenseApi extends EventEmitter {
 
     this.http.interceptors.request.use(
       (config) => {
-        if (this.session && config.headers) {
-          config.headers['token'] = this.session.getIdToken().getJwtToken();
+        if (this.session && config.headers && !config.headers['Authorization']) {
+          config.headers['Authorization'] = this.session.getAccessToken().getJwtToken();
         }
         return config;
       },
@@ -108,19 +159,8 @@ export class XsenseApi extends EventEmitter {
     }
 
     this.log.debug('Fetching client info...');
-    const response = await this.http.post<GetClientInfoResponse>('/app', {
-      clientType: CLIENT_TYPE,
-      mac: 'abcdefg',
-      appVersion: APP_VERSION,
-      bizCode: '101001',
-      appCode: APP_CODE,
-    });
-
-    if (response.data.reCode !== 200) {
-      throw new Error(`Failed to fetch client info: ${response.data.reMsg}`);
-    }
-
-    this.clientInfo = response.data.reData;
+    const data = await this.apiCall<ClientInfo>('101001', {}, true);
+    this.clientInfo = data;
     this.clientSecret = this.decodeSecret(this.clientInfo.clientSecret);
     this.userPool = new CognitoUserPool({
       UserPoolId: this.clientInfo.userPoolId,
@@ -180,30 +220,36 @@ export class XsenseApi extends EventEmitter {
 
   public async getDeviceList(): Promise<DeviceInfo[]> {
     this.log.debug('Fetching device list...');
-    const response = await this.http.post<GetDeviceListResponse>('/v1/user/getDeviceList', {
-      'userId': this.session?.getIdToken().payload.sub,
-    });
 
-    if (response.data.code !== 0) {
-      throw new Error(`Error fetching device list: ${response.data.msg} (code: ${response.data.code})`);
+    const houses = await this.apiCall<any[]>('102007', { utctimestamp: '0' });
+    const devices: DeviceInfo[] = [];
+
+    for (const house of houses) {
+      const stationData = await this.apiCall<any>('103007', { houseId: house.houseId, utctimestamp: '0' });
+      for (const station of stationData.stations ?? []) {
+        for (const d of station.devices ?? []) {
+          devices.push({
+            station_sn: station.stationSn,
+            station_name: station.stationName,
+            device_id: d.deviceId,
+            device_name: d.deviceName,
+            type_id: d.deviceType,
+            device_model: d.deviceModel ?? d.deviceType,
+            status: d.status ?? {},
+          });
+        }
+      }
     }
-    // Store for later use in MQTT reconnects
-    this.lastKnownDevices = response.data.data ?? [];
+
+    this.lastKnownDevices = devices;
     return this.lastKnownDevices;
   }
 
   public async getIotCredential(): Promise<IotCredentials> {
     this.log.debug('Fetching IoT credentials...');
-    const response = await this.http.post<GetIotCredentialResponse>('/v1/user/getIotCredential', {});
-
-    if (response.data.code !== 0) {
-      throw new Error(`Error fetching IoT credentials: ${response.data.msg} (code: ${response.data.code})`);
-    }
-    if (!response.data.data) {
-      throw new Error('IoT credentials response is empty.');
-    }
+    const data = await this.apiCall<IotCredentials>('101003', { userName: this.email });
     this.log.debug('Successfully fetched IoT credentials.');
-    return response.data.data;
+    return data;
   }
 
   public async connectMqtt() {

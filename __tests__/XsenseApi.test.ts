@@ -74,6 +74,7 @@ describe('XsenseApi', () => {
     it('should authenticate and store the session on success', async () => {
       const mockSession = {
         getIdToken: () => ({ getJwtToken: () => 'id-token', payload: { sub: 'user-sub' } }),
+        getAccessToken: () => ({ getJwtToken: () => 'access-token' }),
         getRefreshToken: () => ({ getToken: () => 'refresh-token' }),
         isValid: () => true,
       };
@@ -103,6 +104,7 @@ describe('XsenseApi', () => {
       // Mock a successful login before these tests
       const mockSession = {
         getIdToken: () => ({ getJwtToken: () => 'id-token', payload: { sub: 'user-sub' } }),
+        getAccessToken: () => ({ getJwtToken: () => 'access-token' }),
         getRefreshToken: () => ({ getToken: () => 'refresh-token' }),
         isValid: () => true,
       };
@@ -113,23 +115,30 @@ describe('XsenseApi', () => {
     });
 
     it('should fetch and return the device list', async () => {
-      const mockDevices = [{ device_id: '123', device_name: 'Living Room' }];
-      nock(API_HOST)
-        .post('/v1/user/getDeviceList')
-        .reply(200, { code: 0, msg: 'Success', data: mockDevices });
+      const houses = [{ houseId: 'h1' }];
+      const stations = { stations: [{ stationSn: 's1', stationName: 'Station', devices: [{ deviceId: '123', deviceName: 'Living Room', deviceType: 1 }] }] };
+      nock(API_HOST).post('/app').reply(200, { reCode: 200, reData: houses }).post('/app').reply(200, { reCode: 200, reData: stations });
 
       const devices = await api.getDeviceList();
 
-      expect(devices).toEqual(mockDevices);
+      expect(devices).toEqual([
+        {
+          station_sn: 's1',
+          station_name: 'Station',
+          device_id: '123',
+          device_name: 'Living Room',
+          type_id: 1,
+          device_model: 1,
+          status: {},
+        },
+      ]);
       expect(nock.isDone()).toBe(true);
     });
 
     it('should throw an error if the API returns a non-zero code', async () => {
-      nock(API_HOST)
-        .post('/v1/user/getDeviceList')
-        .reply(200, { code: -1, msg: 'API Error' });
+      nock(API_HOST).post('/app').reply(200, { reCode: 500, reMsg: 'API Error' });
 
-      await expect(api.getDeviceList()).rejects.toThrow('Error fetching device list: API Error (code: -1)');
+      await expect(api.getDeviceList()).rejects.toThrow('API Error');
       expect(nock.isDone()).toBe(true);
     });
   });
@@ -138,6 +147,7 @@ describe('XsenseApi', () => {
     it('should refresh token on 401 and retry the request', async () => {
       const initialSession = {
         getIdToken: () => ({ getJwtToken: () => 'expired-token', payload: { sub: 'user-sub' } }),
+        getAccessToken: () => ({ getJwtToken: () => 'expired-access' }),
         getRefreshToken: () => ({ getToken: () => 'refresh-token' }),
         isValid: () => false, // Simulate expired
       };
@@ -146,22 +156,35 @@ describe('XsenseApi', () => {
 
       const newSession = {
         getIdToken: () => ({ getJwtToken: () => 'new-valid-token', payload: { sub: 'user-sub' } }),
+        getAccessToken: () => ({ getJwtToken: () => 'new-access' }),
         isValid: () => true,
       };
       mockRefreshSession.mockImplementation((_token, callback) => callback(null, newSession));
 
-      const scope1 = nock(API_HOST, { reqheaders: { token: 'expired-token' } })
-        .post('/v1/user/getDeviceList', { userId: 'user-sub' })
+      const scope1 = nock(API_HOST)
+        .post('/app')
         .reply(401, { msg: 'Unauthorized' });
 
-      const mockDevices = [{ device_id: '456' }];
-      const scope2 = nock(API_HOST, { reqheaders: { token: 'new-valid-token' } })
-        .post('/v1/user/getDeviceList', { userId: 'user-sub' })
-        .reply(200, { code: 0, msg: 'Success', data: mockDevices });
+      const mockDevices = { stations: [{ stationSn: 's1', stationName: 'Station', devices: [{ deviceId: '456', deviceName: 'Device', deviceType: 1 }] }] };
+      const scope2 = nock(API_HOST)
+        .post('/app')
+        .reply(200, { reCode: 200, reData: [{ houseId: 'h1' }] })
+        .post('/app')
+        .reply(200, { reCode: 200, reData: mockDevices });
 
       const devices = await api.getDeviceList();
 
-      expect(devices).toEqual(mockDevices);
+      expect(devices).toEqual([
+        {
+          station_sn: 's1',
+          station_name: 'Station',
+          device_id: '456',
+          device_name: 'Device',
+          type_id: 1,
+          device_model: 1,
+          status: {},
+        },
+      ]);
       expect(scope1.isDone()).toBe(true);
       expect(scope2.isDone()).toBe(true);
       expect(mockRefreshSession).toHaveBeenCalled();
@@ -172,6 +195,7 @@ describe('XsenseApi', () => {
     it('should fail if token refresh fails', async () => {
       const initialSession = {
         getIdToken: () => ({ getJwtToken: () => 'expired-token', payload: { sub: 'user-sub' } }),
+        getAccessToken: () => ({ getJwtToken: () => 'expired-access' }),
         getRefreshToken: () => ({ getToken: () => 'refresh-token' }),
         isValid: () => false,
       };
@@ -181,8 +205,8 @@ describe('XsenseApi', () => {
       const refreshError = new Error('Invalid refresh token');
       mockRefreshSession.mockImplementation((_token, callback) => callback(refreshError, null));
 
-      nock(API_HOST, { reqheaders: { token: 'expired-token' } })
-        .post('/v1/user/getDeviceList', { userId: 'user-sub' })
+      nock(API_HOST)
+        .post('/app')
         .reply(401, { msg: 'Unauthorized' });
 
       await expect(api.getDeviceList()).rejects.toThrow('Invalid refresh token');
@@ -207,6 +231,7 @@ describe('XsenseApi', () => {
       // Mock a successful login before these tests
       const mockSession = {
         getIdToken: () => ({ getJwtToken: () => 'id-token', payload: { sub: 'user-sub' } }),
+        getAccessToken: () => ({ getJwtToken: () => 'access-token' }),
         isValid: () => true,
       };
       mockAuthenticateUser.mockImplementation((_details, callbacks) => {
@@ -216,11 +241,13 @@ describe('XsenseApi', () => {
 
       // Mock device list and credentials
       nock(API_HOST)
-        .post('/v1/user/getDeviceList')
-        .reply(200, { code: 0, data: mockDevices });
+        .post('/app')
+        .reply(200, { reCode: 200, reData: [{ houseId: 'h1' }] })
+        .post('/app')
+        .reply(200, { reCode: 200, reData: { stations: mockDevices.map(d => ({ stationSn: d.station_sn, stationName: d.device_name, devices: [d] })) } });
       nock(API_HOST)
-        .post('/v1/user/getIotCredential')
-        .reply(200, { code: 0, data: mockCreds });
+        .post('/app')
+        .reply(200, { reCode: 200, reData: mockCreds });
     });
 
     it('should fetch credentials and connect to MQTT', async () => {
@@ -255,8 +282,12 @@ describe('XsenseApi', () => {
         expiration: new Date(Date.now() + 3600 * 1000).toISOString(),
       };
       nock.cleanAll(); // Clear previous mocks
-      nock(API_HOST).post('/v1/user/getDeviceList').reply(200, { code: 0, data: mockDevices });
-      nock(API_HOST).post('/v1/user/getIotCredential').reply(200, { code: 0, data: freshMockCreds });
+      nock(API_HOST)
+        .post('/app')
+        .reply(200, { reCode: 200, reData: [{ houseId: 'h1' }] })
+        .post('/app')
+        .reply(200, { reCode: 200, reData: { stations: mockDevices.map(d => ({ stationSn: d.station_sn, stationName: d.device_name, devices: [d] })) } });
+      nock(API_HOST).post('/app').reply(200, { reCode: 200, reData: freshMockCreds });
 
       await api.getDeviceList();
       await api.connectMqtt();
