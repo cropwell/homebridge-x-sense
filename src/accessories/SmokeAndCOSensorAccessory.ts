@@ -43,6 +43,8 @@ export class SmokeAndCOSensorAccessory {
       .onGet(() => this.state.batteryLevel);
     this.batteryService.getCharacteristic(this.platform.Characteristic.StatusLowBattery)
       .onGet(() => this.state.statusLowBattery);
+    this.batteryService.setCharacteristic(this.platform.Characteristic.BatteryLevel, this.state.batteryLevel);
+    this.batteryService.setCharacteristic(this.platform.Characteristic.StatusLowBattery, this.state.statusLowBattery);
 
     this.updateFromDeviceInfo(accessory.context);
   }
