@@ -49,6 +49,19 @@ describe('XsenseApi', () => {
     // Reset mocks before each test
     jest.clearAllMocks();
     nock.cleanAll();
+    const encoded = Buffer.from('abcdsecret').toString('base64');
+    nock(API_HOST)
+      .post('/app')
+      .reply(200, {
+        reCode: 200,
+        reMsg: 'OK',
+        reData: {
+          clientId: 'test-client',
+          clientSecret: encoded,
+          cgtRegion: 'eu-central-1',
+          userPoolId: 'eu-central-1_test',
+        },
+      });
     api = new XsenseApi(username, password, mockLogger);
   });
 

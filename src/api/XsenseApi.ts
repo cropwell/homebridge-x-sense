@@ -8,14 +8,15 @@ import {
   CognitoUserSession,
 } from 'amazon-cognito-identity-js';
 import { MqttClient, connect as mqttConnect } from 'mqtt';
-import { API_HOST, USER_POOL_ID, CLIENT_ID } from './constants';
-import { DeviceInfo, GetDeviceListResponse, GetIotCredentialResponse, IotCredentials } from './types';
+import { API_HOST, CLIENT_TYPE, APP_VERSION, APP_CODE } from './constants';
+import { DeviceInfo, GetDeviceListResponse, GetIotCredentialResponse, IotCredentials, GetClientInfoResponse, ClientInfo } from './types';
 
 export class XsenseApi extends EventEmitter {
   private readonly log: Logger;
-  private readonly userPool: CognitoUserPool;
-  private readonly user: CognitoUser;
-  private readonly authDetails: AuthenticationDetails;
+  private userPool?: CognitoUserPool;
+  private user?: CognitoUser;
+  private authDetails?: AuthenticationDetails;
+  private clientInfo?: ClientInfo;
   private session: CognitoUserSession | null = null;
   private readonly http: AxiosInstance;
   private mqttClient: MqttClient | null = null;
@@ -29,24 +30,13 @@ export class XsenseApi extends EventEmitter {
   ) {
     super();
     this.log = log;
-    this.userPool = new CognitoUserPool({
-      UserPoolId: USER_POOL_ID,
-      ClientId: CLIENT_ID,
-    });
-    this.user = new CognitoUser({
-      Username: this.email,
-      Pool: this.userPool,
-    });
-    this.authDetails = new AuthenticationDetails({
-      Username: this.email,
-      Password: this.password,
-    });
 
     this.http = axios.create({
       baseURL: API_HOST,
       headers: {
         'Content-Type': 'application/json',
       },
+      proxy: false,
     });
 
     this.http.interceptors.request.use(
@@ -81,9 +71,50 @@ export class XsenseApi extends EventEmitter {
     );
   }
 
+  private async fetchClientInfo(): Promise<ClientInfo> {
+    if (this.clientInfo) {
+      return this.clientInfo;
+    }
+
+    this.log.debug('Fetching client info...');
+    const response = await this.http.post<GetClientInfoResponse>('/app', {
+      clientType: CLIENT_TYPE,
+      mac: 'abcdefg',
+      appVersion: APP_VERSION,
+      bizCode: '101001',
+      appCode: APP_CODE,
+    });
+
+    if (response.data.reCode !== 200) {
+      throw new Error(`Failed to fetch client info: ${response.data.reMsg}`);
+    }
+
+    this.clientInfo = response.data.reData;
+    this.userPool = new CognitoUserPool({
+      UserPoolId: this.clientInfo.userPoolId,
+      ClientId: this.clientInfo.clientId,
+    });
+    this.user = new CognitoUser({
+      Username: this.email,
+      Pool: this.userPool,
+    });
+    this.authDetails = new AuthenticationDetails({
+      Username: this.email,
+      Password: this.password,
+    });
+
+    return this.clientInfo;
+  }
+
   public login(): Promise<CognitoUserSession> {
-    return new Promise((resolve, reject) => {
-      this.user.authenticateUser(this.authDetails, {
+    return new Promise(async (resolve, reject) => {
+      try {
+        await this.fetchClientInfo();
+      } catch (err) {
+        return reject(err);
+      }
+
+      this.user!.authenticateUser(this.authDetails!, {
         onSuccess: (session) => {
           this.log.debug('Cognito authentication successful.');
           this.session = session;
@@ -104,7 +135,7 @@ export class XsenseApi extends EventEmitter {
         return reject(new Error('No refresh token available.'));
       }
 
-      this.user.refreshSession(refreshToken, (err, session) => {
+      this.user!.refreshSession(refreshToken, (err, session) => {
         if (err) {
           return reject(err);
         }
