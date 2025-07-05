@@ -272,6 +272,26 @@ describe('XsenseApi', () => {
       );
     });
 
+    it('should use mqttServer when iotEndpoint is missing', async () => {
+      nock.cleanAll();
+      const credsWithoutEndpoint = { ...mockCreds, iotEndpoint: undefined, mqttServer: 'alt.endpoint' };
+      nock(API_HOST)
+        .post('/app')
+        .reply(200, { reCode: 200, reData: [{ houseId: 'h1' }] })
+        .post('/app')
+        .reply(200, { reCode: 200, reData: { stations: mockDevices.map(d => ({ stationSn: d.station_sn, stationName: d.device_name, devices: [d] })) } });
+      nock(API_HOST)
+        .post('/app')
+        .reply(200, { reCode: 200, reData: credsWithoutEndpoint });
+
+      await api.getDeviceList();
+      await api.connectMqtt();
+
+      expect(mockedMqttConnect).toHaveBeenCalledWith(expect.objectContaining({
+        host: credsWithoutEndpoint.mqttServer,
+      }));
+    });
+
     it('should schedule a credential refresh', async () => {
       const setTimeoutSpy = jest.spyOn(global, 'setTimeout');
       const reconnectSpy = jest.spyOn(api as any, 'reconnectMqtt').mockImplementation(() => Promise.resolve());

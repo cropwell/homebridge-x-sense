@@ -23,8 +23,9 @@ export interface IotCredentials {
   secretAccessKey: string;
   sessionToken: string;
   expiration: string; // ISO 8601 date string
-  iotPolicy: string;
-  iotEndpoint: string;
+  iotPolicy?: string;
+  iotEndpoint?: string;
+  mqttServer?: string;
 }
 
 export interface GetIotCredentialResponse {
