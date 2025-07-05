@@ -2,7 +2,7 @@ import { XsenseApi } from '../src/api/XsenseApi';
 import { Logger } from 'homebridge';
 import nock from 'nock';
 import { connect as mqttConnect } from 'mqtt';
-import { API_HOST } from '../src/api/constants';
+import { API_HOST, IOT_ENDPOINT_URL } from '../src/api/constants';
 import aws4 from 'aws4';
 
 // Mock the Cognito library
@@ -23,7 +23,7 @@ const mockedMqttConnect = mqttConnect as jest.Mock;
 
 jest.mock('aws4', () => ({
   sign: jest.fn((opts: any) => {
-    opts.path = '/mqtt?signed=true';
+    opts.headers = { Authorization: 'signed' };
     return opts;
   }),
 }));
@@ -154,6 +154,27 @@ describe('XsenseApi', () => {
     });
   });
 
+  describe('getIotEndpoint', () => {
+    beforeEach(async () => {
+      const mockSession = {
+        getIdToken: () => ({ getJwtToken: () => 'id-token', payload: { sub: 'user-sub' } }),
+        getAccessToken: () => ({ getJwtToken: () => 'access-token' }),
+        isValid: () => true,
+      };
+      mockAuthenticateUser.mockImplementation((_d, callbacks) => {
+        callbacks.onSuccess(mockSession);
+      });
+      await api.login();
+    });
+
+    it('should retrieve the IoT endpoint from API', async () => {
+      const url = new URL(IOT_ENDPOINT_URL);
+      nock(url.origin).get(url.pathname).reply(200, { endpoint: 'iot.test' });
+      const ep = await api.getIotEndpoint();
+      expect(ep).toBe('iot.test');
+    });
+  });
+
   describe('Token Refresh', () => {
     it('should refresh token on 401 and retry the request', async () => {
       const initialSession = {
@@ -252,12 +273,16 @@ describe('XsenseApi', () => {
       });
       await api.login();
 
-      // Mock device list and credentials
+      // Mock device list, credentials, and endpoint
       nock(API_HOST)
         .post('/app')
         .reply(200, { reCode: 200, reData: [{ houseId: 'h1', mqttServer: 'house.endpoint', mqttRegion: 'eu-central-1' }] })
         .post('/app')
         .reply(200, { reCode: 200, reData: { stations: mockDevices.map(d => ({ stationSn: d.station_sn, stationName: d.device_name, devices: [d] })) } });
+      const ep = new URL(IOT_ENDPOINT_URL);
+      nock(ep.origin)
+        .get(ep.pathname)
+        .reply(200, { endpoint: mockCreds.iotEndpoint });
       nock(API_HOST)
         .post('/app')
         .reply(200, { reCode: 200, reData: mockCreds });
@@ -270,12 +295,7 @@ describe('XsenseApi', () => {
       expect(mockedAws4Sign).toHaveBeenCalled();
       expect(mockedMqttConnect).toHaveBeenCalledWith(
         `wss://${mockCreds.iotEndpoint}/mqtt`,
-        expect.objectContaining({ transformWsUrl: expect.any(Function) }),
-      );
-
-      const opts = mockedMqttConnect.mock.calls[0][1];
-      expect(opts.transformWsUrl()).toBe(
-        `wss://${mockCreds.iotEndpoint}/mqtt?signed=true`,
+        expect.objectContaining({ wsOptions: { headers: { Authorization: 'signed' } } }),
       );
 
       // Simulate the 'connect' event to trigger subscriptions
@@ -299,6 +319,8 @@ describe('XsenseApi', () => {
         .reply(200, { reCode: 200, reData: [{ houseId: 'h1', mqttServer: 'house.endpoint', mqttRegion: 'eu-central-1' }] })
         .post('/app')
         .reply(200, { reCode: 200, reData: { stations: mockDevices.map(d => ({ stationSn: d.station_sn, stationName: d.device_name, devices: [d] })) } });
+      const ep = new URL(IOT_ENDPOINT_URL);
+      nock(ep.origin).get(ep.pathname).reply(200, { endpoint: credsWithoutEndpoint.mqttServer });
       nock(API_HOST)
         .post('/app')
         .reply(200, { reCode: 200, reData: credsWithoutEndpoint });
@@ -312,11 +334,7 @@ describe('XsenseApi', () => {
       );
       expect(mockedMqttConnect).toHaveBeenCalledWith(
         `wss://${credsWithoutEndpoint.mqttServer}/mqtt`,
-        expect.objectContaining({ transformWsUrl: expect.any(Function) }),
-      );
-      const opts = mockedMqttConnect.mock.calls[0][1];
-      expect(opts.transformWsUrl()).toBe(
-        `wss://${credsWithoutEndpoint.mqttServer}/mqtt?signed=true`,
+        expect.objectContaining({ wsOptions: { headers: { Authorization: 'signed' } } }),
       );
     });
 
@@ -328,6 +346,8 @@ describe('XsenseApi', () => {
         .reply(200, { reCode: 200, reData: [{ houseId: 'h1', mqttServer: 'house.endpoint', mqttRegion: 'eu-central-1' }] })
         .post('/app')
         .reply(200, { reCode: 200, reData: { stations: mockDevices.map(d => ({ stationSn: d.station_sn, stationName: d.device_name, devices: [d] })) } });
+      const ep2 = new URL(IOT_ENDPOINT_URL);
+      nock(ep2.origin).get(ep2.pathname).reply(200, { endpoint: credsWithHost.host });
       nock(API_HOST)
         .post('/app')
         .reply(200, { reCode: 200, reData: credsWithHost });
@@ -341,10 +361,7 @@ describe('XsenseApi', () => {
       );
       expect(mockedMqttConnect).toHaveBeenCalledWith(
         `wss://${credsWithHost.host}/mqtt`,
-        expect.objectContaining({ transformWsUrl: expect.any(Function) }),
-      );
-      expect(mockedMqttConnect.mock.calls[0][1].transformWsUrl()).toBe(
-        `wss://${credsWithHost.host}/mqtt?signed=true`,
+        expect.objectContaining({ wsOptions: { headers: { Authorization: 'signed' } } }),
       );
     });
 
@@ -356,6 +373,8 @@ describe('XsenseApi', () => {
         .reply(200, { reCode: 200, reData: [{ houseId: 'h1', mqttServer: 'house.endpoint', mqttRegion: 'eu-central-1' }] })
         .post('/app')
         .reply(200, { reCode: 200, reData: { stations: mockDevices.map(d => ({ stationSn: d.station_sn, stationName: d.device_name, devices: [d] })) } });
+      const ep3 = new URL(IOT_ENDPOINT_URL);
+      nock(ep3.origin).get(ep3.pathname).reply(200, { endpoint: 'house.endpoint' });
       nock(API_HOST)
         .post('/app')
         .reply(200, { reCode: 200, reData: credsNoEndpoint });
@@ -369,10 +388,7 @@ describe('XsenseApi', () => {
       );
       expect(mockedMqttConnect).toHaveBeenCalledWith(
         'wss://house.endpoint/mqtt',
-        expect.objectContaining({ transformWsUrl: expect.any(Function) }),
-      );
-      expect(mockedMqttConnect.mock.calls[0][1].transformWsUrl()).toBe(
-        'wss://house.endpoint/mqtt?signed=true',
+        expect.objectContaining({ wsOptions: { headers: { Authorization: 'signed' } } }),
       );
     });
 
@@ -384,6 +400,8 @@ describe('XsenseApi', () => {
         .reply(200, { reCode: 200, reData: [{ houseId: 'h1', mqttRegion: 'eu-central-1' }] })
         .post('/app')
         .reply(200, { reCode: 200, reData: { stations: mockDevices.map(d => ({ stationSn: d.station_sn, stationName: d.device_name, devices: [d] })) } });
+      const ep4 = new URL(IOT_ENDPOINT_URL);
+      nock(ep4.origin).get(ep4.pathname).reply(200, { endpoint: 'eu-central-1.x-sense-iot.com' });
       nock(API_HOST)
         .post('/app')
         .reply(200, { reCode: 200, reData: credsNoEndpoint });
@@ -397,10 +415,7 @@ describe('XsenseApi', () => {
       );
       expect(mockedMqttConnect).toHaveBeenCalledWith(
         'wss://eu-central-1.x-sense-iot.com/mqtt',
-        expect.objectContaining({ transformWsUrl: expect.any(Function) }),
-      );
-      expect(mockedMqttConnect.mock.calls[0][1].transformWsUrl()).toBe(
-        'wss://eu-central-1.x-sense-iot.com/mqtt?signed=true',
+        expect.objectContaining({ wsOptions: { headers: { Authorization: 'signed' } } }),
       );
     });
 
@@ -419,6 +434,8 @@ describe('XsenseApi', () => {
         .reply(200, { reCode: 200, reData: [{ houseId: 'h1', mqttServer: 'house.endpoint', mqttRegion: 'eu-central-1' }] })
         .post('/app')
         .reply(200, { reCode: 200, reData: { stations: mockDevices.map(d => ({ stationSn: d.station_sn, stationName: d.device_name, devices: [d] })) } });
+      const ep5 = new URL(IOT_ENDPOINT_URL);
+      nock(ep5.origin).get(ep5.pathname).reply(200, { endpoint: freshMockCreds.iotEndpoint });
       nock(API_HOST).post('/app').reply(200, { reCode: 200, reData: freshMockCreds });
 
       await api.getDeviceList();
