@@ -8,6 +8,7 @@ import {
   CognitoUserSession,
 } from 'amazon-cognito-identity-js';
 import { MqttClient, connect as mqttConnect } from 'mqtt';
+import aws4 from 'aws4';
 import { createHmac, createHash } from 'crypto';
 import { API_HOST, CLIENT_TYPE, APP_VERSION, APP_CODE } from './constants';
 import { DeviceInfo, IotCredentials, ClientInfo } from './types';
@@ -312,16 +313,29 @@ export class XsenseApi extends EventEmitter {
 
       this.log.info(`Connecting to MQTT broker at wss://${sanitized}/mqtt`);
 
-      this.mqttClient = mqttConnect(({
+      const regionMatch = sanitized.match(/\.iot\.([^.]+)\./);
+      const region = regionMatch?.[1] || this.lastKnownDevices[0]?.mqttRegion || 'us-east-1';
+
+      const signOpts: any = {
         host: sanitized,
-        protocol: 'wss',
         path: '/mqtt',
-        clientId: `homebridge-xsense_${Math.random().toString(16).substring(2, 10)}`,
+        service: 'iotdevicegateway',
+        region,
+        signQuery: true,
+      };
+      aws4.sign(signOpts, {
         accessKeyId: creds.accessKeyId,
         secretAccessKey: creds.secretAccessKey,
         sessionToken: creds.sessionToken,
+      });
+      const signedUrl = `wss://${signOpts.host}${signOpts.path}`;
+
+      this.mqttClient = mqttConnect(`wss://${sanitized}/mqtt`, {
+        protocol: 'wss',
+        clientId: `homebridge-xsense_${Math.random().toString(16).substring(2, 10)}`,
         reconnectPeriod: 5000,
-      } as any));
+        transformWsUrl: () => signedUrl,
+      } as any);
 
       this.mqttClient.on('connect', () => {
         this.log.info('MQTT client connected.');

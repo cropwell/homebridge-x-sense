@@ -3,6 +3,7 @@ import { Logger } from 'homebridge';
 import nock from 'nock';
 import { connect as mqttConnect } from 'mqtt';
 import { API_HOST } from '../src/api/constants';
+import aws4 from 'aws4';
 
 // Mock the Cognito library
 const mockAuthenticateUser = jest.fn();
@@ -19,6 +20,14 @@ jest.mock('mqtt', () => ({
   connect: jest.fn().mockImplementation(() => mockMqttClient),
 }));
 const mockedMqttConnect = mqttConnect as jest.Mock;
+
+jest.mock('aws4', () => ({
+  sign: jest.fn((opts: any) => {
+    opts.path = '/mqtt?signed=true';
+    return opts;
+  }),
+}));
+const mockedAws4Sign = (aws4 as unknown as { sign: jest.Mock }).sign;
 
 jest.mock('amazon-cognito-identity-js', () => {
   return {
@@ -258,10 +267,16 @@ describe('XsenseApi', () => {
       await api.getDeviceList(); // Populate lastKnownDevices
       await api.connectMqtt();
 
-      expect(mockedMqttConnect).toHaveBeenCalledWith(expect.objectContaining({
-        host: mockCreds.iotEndpoint,
-        accessKeyId: mockCreds.accessKeyId,
-      }));
+      expect(mockedAws4Sign).toHaveBeenCalled();
+      expect(mockedMqttConnect).toHaveBeenCalledWith(
+        `wss://${mockCreds.iotEndpoint}/mqtt`,
+        expect.objectContaining({ transformWsUrl: expect.any(Function) }),
+      );
+
+      const opts = mockedMqttConnect.mock.calls[0][1];
+      expect(opts.transformWsUrl()).toBe(
+        `wss://${mockCreds.iotEndpoint}/mqtt?signed=true`,
+      );
 
       // Simulate the 'connect' event to trigger subscriptions
       const connectCallback = mockMqttClient.on.mock.calls.find(call => call[0] === 'connect')[1];
@@ -291,9 +306,18 @@ describe('XsenseApi', () => {
       await api.getDeviceList();
       await api.connectMqtt();
 
-      expect(mockedMqttConnect).toHaveBeenCalledWith(expect.objectContaining({
-        host: credsWithoutEndpoint.mqttServer,
-      }));
+      expect(mockedAws4Sign).toHaveBeenCalledWith(
+        expect.objectContaining({ host: credsWithoutEndpoint.mqttServer }),
+        expect.anything(),
+      );
+      expect(mockedMqttConnect).toHaveBeenCalledWith(
+        `wss://${credsWithoutEndpoint.mqttServer}/mqtt`,
+        expect.objectContaining({ transformWsUrl: expect.any(Function) }),
+      );
+      const opts = mockedMqttConnect.mock.calls[0][1];
+      expect(opts.transformWsUrl()).toBe(
+        `wss://${credsWithoutEndpoint.mqttServer}/mqtt?signed=true`,
+      );
     });
 
     it('should use host field when present', async () => {
@@ -311,9 +335,17 @@ describe('XsenseApi', () => {
       await api.getDeviceList();
       await api.connectMqtt();
 
-      expect(mockedMqttConnect).toHaveBeenCalledWith(expect.objectContaining({
-        host: credsWithHost.host,
-      }));
+      expect(mockedAws4Sign).toHaveBeenCalledWith(
+        expect.objectContaining({ host: credsWithHost.host }),
+        expect.anything(),
+      );
+      expect(mockedMqttConnect).toHaveBeenCalledWith(
+        `wss://${credsWithHost.host}/mqtt`,
+        expect.objectContaining({ transformWsUrl: expect.any(Function) }),
+      );
+      expect(mockedMqttConnect.mock.calls[0][1].transformWsUrl()).toBe(
+        `wss://${credsWithHost.host}/mqtt?signed=true`,
+      );
     });
 
     it('should fallback to device mqttServer when endpoint absent', async () => {
@@ -331,9 +363,17 @@ describe('XsenseApi', () => {
       await api.getDeviceList();
       await api.connectMqtt();
 
-      expect(mockedMqttConnect).toHaveBeenCalledWith(expect.objectContaining({
-        host: 'house.endpoint',
-      }));
+      expect(mockedAws4Sign).toHaveBeenCalledWith(
+        expect.objectContaining({ host: 'house.endpoint' }),
+        expect.anything(),
+      );
+      expect(mockedMqttConnect).toHaveBeenCalledWith(
+        'wss://house.endpoint/mqtt',
+        expect.objectContaining({ transformWsUrl: expect.any(Function) }),
+      );
+      expect(mockedMqttConnect.mock.calls[0][1].transformWsUrl()).toBe(
+        'wss://house.endpoint/mqtt?signed=true',
+      );
     });
 
     it('should fallback to mqttRegion when no mqttServer present', async () => {
@@ -351,9 +391,17 @@ describe('XsenseApi', () => {
       await api.getDeviceList();
       await api.connectMqtt();
 
-      expect(mockedMqttConnect).toHaveBeenCalledWith(expect.objectContaining({
-        host: 'eu-central-1.x-sense-iot.com',
-      }));
+      expect(mockedAws4Sign).toHaveBeenCalledWith(
+        expect.objectContaining({ host: 'eu-central-1.x-sense-iot.com' }),
+        expect.anything(),
+      );
+      expect(mockedMqttConnect).toHaveBeenCalledWith(
+        'wss://eu-central-1.x-sense-iot.com/mqtt',
+        expect.objectContaining({ transformWsUrl: expect.any(Function) }),
+      );
+      expect(mockedMqttConnect.mock.calls[0][1].transformWsUrl()).toBe(
+        'wss://eu-central-1.x-sense-iot.com/mqtt?signed=true',
+      );
     });
 
     it('should schedule a credential refresh', async () => {
