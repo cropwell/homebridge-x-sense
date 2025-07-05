@@ -54,7 +54,11 @@ export class SmokeAndCOSensorAccessory {
    */
   public updateFromDeviceInfo(device: DeviceInfo): void {
     this.platform.log.debug(`Updating ${this.accessory.displayName} from initial info:`, device.status);
-    this.updateBattery(device.status.battery);
+    const battery = device.status.battery ?? device.status.batteryLevel ??
+      (device.status as any).battery_level ??
+      (device.status as any).batteryPercentage ??
+      (device.status as any).battery_percentage;
+    this.updateBattery(battery);
   }
 
   /**
@@ -63,8 +67,10 @@ export class SmokeAndCOSensorAccessory {
    */
   public updateFromShadow(shadow: any): void {
     this.platform.log.debug(`Updating ${this.accessory.displayName} from shadow:`, shadow);
-    if (shadow.battery !== undefined) {
-      this.updateBattery(shadow.battery);
+    const battery = shadow.battery ?? shadow.batteryLevel ?? shadow.battery_level ??
+      shadow.batteryPercentage ?? shadow.battery_percentage;
+    if (battery !== undefined) {
+      this.updateBattery(battery);
     }
   }
 
@@ -103,7 +109,7 @@ export class SmokeAndCOSensorAccessory {
 
   private updateBattery(level?: number): void {
     if (typeof level !== 'number' || !Number.isFinite(level)) {
-      this.platform.log.warn(`[${this.accessory.displayName}] Invalid battery level received: ${level}`);
+      this.platform.log.debug(`[${this.accessory.displayName}] Ignoring invalid battery level: ${level}`);
       return;
     }
 

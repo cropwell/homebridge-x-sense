@@ -257,7 +257,8 @@ export class XsenseApi extends EventEmitter {
       sessionToken: raw.sessionToken,
       expiration: raw.expiration,
       iotPolicy: raw.iotPolicy,
-      iotEndpoint: raw.iotEndpoint ?? raw.iot_endpoint ?? raw.mqttServer,
+      iotEndpoint: raw.iotEndpoint ?? raw.iot_endpoint ?? raw.mqttServer ??
+        raw.mqtt_server ?? raw.host ?? raw.endpoint,
     };
 
     if (!creds.iotEndpoint) {
@@ -291,6 +292,8 @@ export class XsenseApi extends EventEmitter {
         this.log.warn('IoT endpoint missing from credential response, using mqttServer from device list.');
       }
 
+      const sanitized = endpoint.replace(/^wss?:\/\//, '').replace(/\/?mqtt$/, '');
+
       // Proactively refresh credentials 5 minutes before they expire
       const expiration = new Date(creds.expiration).getTime();
       const now = Date.now();
@@ -303,11 +306,12 @@ export class XsenseApi extends EventEmitter {
 
       const uniqueStationSns = [...new Set(this.lastKnownDevices.map(d => d.station_sn))];
 
-      this.log.info(`Connecting to MQTT broker at wss://${endpoint}/mqtt`);
+      this.log.info(`Connecting to MQTT broker at wss://${sanitized}/mqtt`);
 
       this.mqttClient = mqttConnect(({
-        host: endpoint,
+        host: sanitized,
         protocol: 'wss',
+        path: '/mqtt',
         clientId: `homebridge-xsense_${Math.random().toString(16).substring(2, 10)}`,
         accessKeyId: creds.accessKeyId,
         secretAccessKey: creds.secretAccessKey,
