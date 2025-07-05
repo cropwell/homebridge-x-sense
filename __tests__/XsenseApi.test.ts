@@ -52,7 +52,9 @@ describe('XsenseApi', () => {
     // Reset mocks before each test
     jest.clearAllMocks();
     nock.cleanAll();
+    
     const encoded = Buffer.from('1234secretZ').toString('base64');
+    
     nock(API_HOST)
       .post('/app')
       .reply(200, {

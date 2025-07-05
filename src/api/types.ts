@@ -45,4 +45,3 @@ export interface GetClientInfoResponse {
   reMsg: string;
   reData: ClientInfo;
 }
-
