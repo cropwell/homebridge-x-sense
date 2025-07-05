@@ -8,7 +8,7 @@ import {
   CognitoUserSession,
 } from 'amazon-cognito-identity-js';
 import { MqttClient, connect as mqttConnect } from 'mqtt';
-import { API_HOST, USER_POOL_ID } from './constants';
+import { API_HOST, USER_POOL_ID, CLIENT_ID } from './constants';
 import { DeviceInfo, GetDeviceListResponse, GetIotCredentialResponse, IotCredentials } from './types';
 
 export class XsenseApi extends EventEmitter {
@@ -31,7 +31,7 @@ export class XsenseApi extends EventEmitter {
     this.log = log;
     this.userPool = new CognitoUserPool({
       UserPoolId: USER_POOL_ID,
-      ClientId: '',
+      ClientId: CLIENT_ID,
     });
     this.user = new CognitoUser({
       Username: this.email,
