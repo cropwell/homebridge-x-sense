@@ -54,10 +54,11 @@ export class SmokeAndCOSensorAccessory {
    */
   public updateFromDeviceInfo(device: DeviceInfo): void {
     this.platform.log.debug(`Updating ${this.accessory.displayName} from initial info:`, device.status);
-    const battery = device.status.battery ?? device.status.batteryLevel ??
-      (device.status as any).battery_level ??
-      (device.status as any).batteryPercentage ??
-      (device.status as any).battery_percentage;
+    const status: any = device.status as any;
+    const battery = status.battery ?? status.batteryLevel ??
+      status.battery_level ??
+      status.batteryPercentage ??
+      status.battery_percentage;
     this.updateBattery(battery);
   }
 
