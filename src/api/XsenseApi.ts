@@ -10,7 +10,7 @@ import {
 import { MqttClient, connect as mqttConnect } from 'mqtt';
 import aws4 from 'aws4';
 import { createHmac, createHash } from 'crypto';
-import { API_HOST, CLIENT_TYPE, APP_VERSION, APP_CODE } from './constants';
+import { API_HOST, IOT_ENDPOINT_URL, CLIENT_TYPE, APP_VERSION, APP_CODE } from './constants';
 import { DeviceInfo, IotCredentials, ClientInfo } from './types';
 
 export class XsenseApi extends EventEmitter {
@@ -25,6 +25,7 @@ export class XsenseApi extends EventEmitter {
   private mqttClient: MqttClient | null = null;
   private mqttRefreshTimer?: NodeJS.Timeout;
   private lastKnownDevices: DeviceInfo[] = [];
+  private iotEndpoint?: string;
 
   private decodeSecret(encoded: string): Buffer {
     const value = Buffer.from(encoded, 'base64');
@@ -248,6 +249,25 @@ export class XsenseApi extends EventEmitter {
     return this.lastKnownDevices;
   }
 
+  public async getIotEndpoint(): Promise<string> {
+    if (this.iotEndpoint) {
+      return this.iotEndpoint;
+    }
+    if (!this.session) {
+      throw new Error('Not authenticated');
+    }
+    this.log.debug('Fetching IoT endpoint...');
+    const response = await axios.get(IOT_ENDPOINT_URL, {
+      headers: { Authorization: this.session.getIdToken().getJwtToken() },
+      proxy: false,
+    });
+    if (!response.data?.endpoint) {
+      throw new Error('Invalid endpoint response');
+    }
+    this.iotEndpoint = response.data.endpoint as string;
+    return this.iotEndpoint;
+  }
+
   public async getIotCredential(): Promise<IotCredentials> {
     this.log.debug('Fetching IoT credentials...');
     const raw = await this.apiCall<any>('101003', { userName: this.email });
@@ -281,8 +301,17 @@ export class XsenseApi extends EventEmitter {
 
     try {
       const creds = await this.getIotCredential();
+      let endpoint: string | undefined;
+      try {
+        endpoint = await this.getIotEndpoint();
+      } catch (err) {
+        this.log.warn('Failed to fetch IoT endpoint via dedicated API, falling back to credential response.');
+        endpoint = creds.iotEndpoint;
+      }
 
-      let endpoint = creds.iotEndpoint;
+      if (!endpoint) {
+        endpoint = creds.iotEndpoint;
+      }
       if (!endpoint) {
         const device = this.lastKnownDevices[0];
         endpoint = device?.mqttServer;
@@ -321,20 +350,19 @@ export class XsenseApi extends EventEmitter {
         path: '/mqtt',
         service: 'iotdevicegateway',
         region,
-        signQuery: true,
+        method: 'GET',
       };
-      aws4.sign(signOpts, {
+      const signed = aws4.sign(signOpts, {
         accessKeyId: creds.accessKeyId,
         secretAccessKey: creds.secretAccessKey,
         sessionToken: creds.sessionToken,
       });
-      const signedUrl = `wss://${signOpts.host}${signOpts.path}`;
 
       this.mqttClient = mqttConnect(`wss://${sanitized}/mqtt`, {
         protocol: 'wss',
         clientId: `homebridge-xsense_${Math.random().toString(16).substring(2, 10)}`,
         reconnectPeriod: 5000,
-        transformWsUrl: () => signedUrl,
+        wsOptions: { headers: signed.headers },
       } as any);
 
       this.mqttClient.on('connect', () => {
