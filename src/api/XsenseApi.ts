@@ -247,9 +247,23 @@ export class XsenseApi extends EventEmitter {
 
   public async getIotCredential(): Promise<IotCredentials> {
     this.log.debug('Fetching IoT credentials...');
-    const data = await this.apiCall<IotCredentials>('101003', { userName: this.email });
+    const raw = await this.apiCall<any>('101003', { userName: this.email });
     this.log.debug('Successfully fetched IoT credentials.');
-    return data;
+
+    const creds: IotCredentials = {
+      accessKeyId: raw.accessKeyId,
+      secretAccessKey: raw.secretAccessKey,
+      sessionToken: raw.sessionToken,
+      expiration: raw.expiration,
+      iotPolicy: raw.iotPolicy,
+      iotEndpoint: raw.iotEndpoint ?? raw.iot_endpoint ?? raw.mqttServer,
+    };
+
+    if (!creds.iotEndpoint) {
+      this.log.warn('IoT endpoint missing from credential response.');
+    }
+
+    return creds;
   }
 
   public async connectMqtt() {
@@ -266,6 +280,12 @@ export class XsenseApi extends EventEmitter {
     try {
       const creds = await this.getIotCredential();
 
+      const endpoint = creds.iotEndpoint;
+      if (!endpoint) {
+        this.log.error('Cannot connect to MQTT: missing IoT endpoint.');
+        return;
+      }
+
       // Proactively refresh credentials 5 minutes before they expire
       const expiration = new Date(creds.expiration).getTime();
       const now = Date.now();
@@ -278,10 +298,10 @@ export class XsenseApi extends EventEmitter {
 
       const uniqueStationSns = [...new Set(this.lastKnownDevices.map(d => d.station_sn))];
 
-      this.log.info(`Connecting to MQTT broker at wss://${creds.iotEndpoint}/mqtt`);
+      this.log.info(`Connecting to MQTT broker at wss://${endpoint}/mqtt`);
 
       this.mqttClient = mqttConnect(({
-        host: creds.iotEndpoint,
+        host: endpoint,
         protocol: 'wss',
         clientId: `homebridge-xsense_${Math.random().toString(16).substring(2, 10)}`,
         accessKeyId: creds.accessKeyId,
