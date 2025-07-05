@@ -85,7 +85,7 @@ export class XSenseHomebridgePlatform implements DynamicPlatformPlugin {
 
       if (accessoriesToUnregister.length > 0) {
         this.log.info('Unregistering stale accessories:', accessoriesToUnregister.map(a => a.displayName));
-        this.api.unregisterPlatformAccessories(accessoriesToUnregister);
+        this.api.unregisterPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, accessoriesToUnregister);
       }
 
       // Connect to MQTT for real-time updates

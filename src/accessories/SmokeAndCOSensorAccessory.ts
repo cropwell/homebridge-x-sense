@@ -1,4 +1,4 @@
-import { Service, PlatformAccessory, CharacteristicValue } from 'homebridge';
+import { Service, PlatformAccessory } from 'homebridge';
 import { XSenseHomebridgePlatform } from '../platform';
 import { DeviceInfo } from '../api/types';
 
@@ -82,7 +82,7 @@ export class SmokeAndCOSensorAccessory {
         : this.platform.Characteristic.SmokeDetected.SMOKE_NOT_DETECTED;
 
       const coDetected = (alarmStatus === 2 || alarmStatus === 3)
-        ? this.platform.Characteristic.CarbonMonoxideDetected.CO_LEVELS_DETECTED
+        ? this.platform.Characteristic.CarbonMonoxideDetected.CO_LEVELS_ABNORMAL
         : this.platform.Characteristic.CarbonMonoxideDetected.CO_LEVELS_NORMAL;
 
       if (this.state.smokeDetected !== smokeDetected) {
