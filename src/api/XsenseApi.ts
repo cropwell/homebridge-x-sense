@@ -136,7 +136,6 @@ export class XsenseApi extends EventEmitter {
     });
 
     this.wrapRequest();
-
     return this.clientInfo;
   }
 
