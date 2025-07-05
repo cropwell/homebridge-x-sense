@@ -7,6 +7,7 @@ import { API_HOST } from '../src/api/constants';
 // Mock the Cognito library
 const mockAuthenticateUser = jest.fn();
 const mockRefreshSession = jest.fn();
+const mockClientRequest = jest.fn((_op: string, _params: any, cb: any) => cb(null, {}));
 
 // Mock the MQTT library
 const mockMqttClient = {
@@ -21,7 +22,9 @@ const mockedMqttConnect = mqttConnect as jest.Mock;
 
 jest.mock('amazon-cognito-identity-js', () => {
   return {
-    CognitoUserPool: jest.fn().mockImplementation(() => ({})),
+    CognitoUserPool: jest.fn().mockImplementation(() => ({
+      client: { request: mockClientRequest },
+    })),
     CognitoUser: jest.fn().mockImplementation(() => ({
       authenticateUser: mockAuthenticateUser,
       refreshSession: mockRefreshSession,
@@ -49,6 +52,19 @@ describe('XsenseApi', () => {
     // Reset mocks before each test
     jest.clearAllMocks();
     nock.cleanAll();
+    const encoded = Buffer.from('1234secretZ').toString('base64');
+    nock(API_HOST)
+      .post('/app')
+      .reply(200, {
+        reCode: 200,
+        reMsg: 'OK',
+        reData: {
+          clientId: 'test-client',
+          clientSecret: encoded,
+          cgtRegion: 'eu-central-1',
+          userPoolId: 'eu-central-1_test',
+        },
+      });
     api = new XsenseApi(username, password, mockLogger);
   });
 

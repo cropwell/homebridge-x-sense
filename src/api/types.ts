@@ -32,3 +32,16 @@ export interface GetIotCredentialResponse {
   msg: string;
   data: IotCredentials;
 }
+
+export interface ClientInfo {
+  clientId: string;
+  clientSecret: string;
+  cgtRegion: string;
+  userPoolId: string;
+}
+
+export interface GetClientInfoResponse {
+  reCode: number;
+  reMsg: string;
+  reData: ClientInfo;
+}
