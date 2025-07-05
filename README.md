@@ -15,12 +15,16 @@ This is a [Homebridge](https://homebridge.io) plugin for integrating X-Sense smo
     *   Low Battery Warnings
 *   **Automatic Discovery:** Automatically discovers all sensors linked to your X-Sense account.
 *   **Resilient:** Automatically handles token refreshes and connection recovery.
+*   **Secure Connection:** Temporary AWS credentials are used to sign the MQTT
+    WebSocket URL via SigV4.
 
 ## Installation
 
 1.  Install Homebridge using the [official instructions](https://github.com/homebridge/homebridge/wiki).
 2.  Install this plugin using the Homebridge UI or `npm install -g homebridge-x-sense`.
 3.  Configure the plugin using the Homebridge UI or by manually editing your `config.json` file.
+4.  The plugin uses temporary AWS credentials from X-Sense to sign the MQTT
+    WebSocket connection.
 
 ## Configuration
 
