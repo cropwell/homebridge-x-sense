@@ -8,6 +8,7 @@ import {
   CognitoUserSession,
 } from 'amazon-cognito-identity-js';
 import { MqttClient, connect as mqttConnect } from 'mqtt';
+import { createHmac } from 'crypto';
 import { API_HOST, CLIENT_TYPE, APP_VERSION, APP_CODE } from './constants';
 import { DeviceInfo, GetDeviceListResponse, GetIotCredentialResponse, IotCredentials, GetClientInfoResponse, ClientInfo } from './types';
 
@@ -17,11 +18,41 @@ export class XsenseApi extends EventEmitter {
   private user?: CognitoUser;
   private authDetails?: AuthenticationDetails;
   private clientInfo?: ClientInfo;
+  private clientSecret?: Buffer;
   private session: CognitoUserSession | null = null;
   private readonly http: AxiosInstance;
   private mqttClient: MqttClient | null = null;
   private mqttRefreshTimer?: NodeJS.Timeout;
   private lastKnownDevices: DeviceInfo[] = [];
+
+  private decodeSecret(encoded: string): Buffer {
+    const value = Buffer.from(encoded, 'base64');
+    return value.subarray(4, value.length - 1);
+  }
+
+  private generateHash(data: string): string {
+    if (!this.clientSecret) {
+      throw new Error('Client secret not available');
+    }
+    return createHmac('sha256', this.clientSecret).update(data, 'utf8').digest('base64');
+  }
+
+  private wrapRequest() {
+    const original = (this.userPool as any).client.request.bind((this.userPool as any).client);
+    (this.userPool as any).client.request = (operation: string, params: any, cb: any) => {
+      if (this.clientInfo && this.clientSecret) {
+        if (operation === 'InitiateAuth' && params.AuthParameters) {
+          const user = params.AuthParameters.USERNAME;
+          params.AuthParameters.SECRET_HASH = this.generateHash(user + this.clientInfo.clientId);
+        }
+        if (operation === 'RespondToAuthChallenge' && params.ChallengeResponses) {
+          const user = params.ChallengeResponses.USERNAME;
+          params.ChallengeResponses.SECRET_HASH = this.generateHash(user + this.clientInfo.clientId);
+        }
+      }
+      return original(operation, params, cb);
+    };
+  }
 
   constructor(
     private readonly email: string,
@@ -90,6 +121,7 @@ export class XsenseApi extends EventEmitter {
     }
 
     this.clientInfo = response.data.reData;
+    this.clientSecret = this.decodeSecret(this.clientInfo.clientSecret);
     this.userPool = new CognitoUserPool({
       UserPoolId: this.clientInfo.userPoolId,
       ClientId: this.clientInfo.clientId,
@@ -103,6 +135,7 @@ export class XsenseApi extends EventEmitter {
       Password: this.password,
     });
 
+    this.wrapRequest();
     return this.clientInfo;
   }
 
