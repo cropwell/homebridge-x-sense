@@ -5,6 +5,11 @@ export interface DeviceInfo {
   device_name: string;
   type_id: number;
   device_model: string;
+  /**
+   * Capabilities detected for this device. Not returned by the API but stored
+   * in the accessory context so we know which services to expose.
+   */
+  capabilities?: string[];
   mqttServer?: string;
   mqttRegion?: string;
   status: {
