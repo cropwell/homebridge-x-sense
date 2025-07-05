@@ -284,8 +284,8 @@ export class XsenseApi extends EventEmitter {
         host: creds.iotEndpoint,
         protocol: 'wss',
         clientId: `homebridge-xsense_${Math.random().toString(16).substring(2, 10)}`,
-        accessKeyId: creds.accessKey,
-        secretAccessKey: creds.secretKey,
+        accessKeyId: creds.accessKeyId,
+        secretAccessKey: creds.secretAccessKey,
         sessionToken: creds.sessionToken,
         reconnectPeriod: 5000,
       } as any));

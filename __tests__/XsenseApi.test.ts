@@ -221,8 +221,8 @@ describe('XsenseApi', () => {
     ];
     const mockCreds = {
       iotEndpoint: 'test.iot.endpoint',
-      accessKey: 'key',
-      secretKey: 'secret',
+      accessKeyId: 'key',
+      secretAccessKey: 'secret',
       sessionToken: 'token',
       expiration: new Date(Date.now() + 3600 * 1000).toISOString(),
     };
@@ -256,7 +256,7 @@ describe('XsenseApi', () => {
 
       expect(mockedMqttConnect).toHaveBeenCalledWith(expect.objectContaining({
         host: mockCreds.iotEndpoint,
-        accessKeyId: mockCreds.accessKey,
+        accessKeyId: mockCreds.accessKeyId,
       }));
 
       // Simulate the 'connect' event to trigger subscriptions
