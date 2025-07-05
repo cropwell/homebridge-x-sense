@@ -43,6 +43,8 @@ export class SmokeAndCOSensorAccessory {
       .onGet(() => this.state.batteryLevel);
     this.batteryService.getCharacteristic(this.platform.Characteristic.StatusLowBattery)
       .onGet(() => this.state.statusLowBattery);
+    this.batteryService.setCharacteristic(this.platform.Characteristic.BatteryLevel, this.state.batteryLevel);
+    this.batteryService.setCharacteristic(this.platform.Characteristic.StatusLowBattery, this.state.statusLowBattery);
 
     this.updateFromDeviceInfo(accessory.context);
   }
@@ -99,15 +101,21 @@ export class SmokeAndCOSensorAccessory {
     }
   }
 
-  private updateBattery(level: number): void {
-    const lowBattery = level <= 20
+  private updateBattery(level?: number): void {
+    if (typeof level !== 'number' || !Number.isFinite(level)) {
+      this.platform.log.warn(`[${this.accessory.displayName}] Invalid battery level received: ${level}`);
+      return;
+    }
+
+    const clamped = Math.min(100, Math.max(0, level));
+    const lowBattery = clamped <= 20
       ? this.platform.Characteristic.StatusLowBattery.BATTERY_LEVEL_LOW
       : this.platform.Characteristic.StatusLowBattery.BATTERY_LEVEL_NORMAL;
 
-    if (this.state.batteryLevel !== level) {
-      this.state.batteryLevel = level;
+    if (this.state.batteryLevel !== clamped) {
+      this.state.batteryLevel = clamped;
       this.batteryService.updateCharacteristic(this.platform.Characteristic.BatteryLevel, this.state.batteryLevel);
-      this.platform.log.debug(`[${this.accessory.displayName}] Battery level updated to ${level}%`);
+      this.platform.log.debug(`[${this.accessory.displayName}] Battery level updated to ${clamped}%`);
     }
 
     if (this.state.statusLowBattery !== lowBattery) {

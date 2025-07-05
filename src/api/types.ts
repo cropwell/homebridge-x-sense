@@ -5,6 +5,7 @@ export interface DeviceInfo {
   device_name: string;
   type_id: number;
   device_model: string;
+  mqttServer?: string;
   status: {
     battery: number;
     online: number;
@@ -23,8 +24,9 @@ export interface IotCredentials {
   secretAccessKey: string;
   sessionToken: string;
   expiration: string; // ISO 8601 date string
-  iotPolicy: string;
-  iotEndpoint: string;
+  iotPolicy?: string;
+  iotEndpoint?: string;
+  mqttServer?: string;
 }
 
 export interface GetIotCredentialResponse {
