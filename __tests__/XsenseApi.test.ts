@@ -292,6 +292,26 @@ describe('XsenseApi', () => {
       }));
     });
 
+    it('should use host field when present', async () => {
+      nock.cleanAll();
+      const credsWithHost = { ...mockCreds, iotEndpoint: undefined, host: 'host.endpoint' };
+      nock(API_HOST)
+        .post('/app')
+        .reply(200, { reCode: 200, reData: [{ houseId: 'h1', mqttServer: 'house.endpoint' }] })
+        .post('/app')
+        .reply(200, { reCode: 200, reData: { stations: mockDevices.map(d => ({ stationSn: d.station_sn, stationName: d.device_name, devices: [d] })) } });
+      nock(API_HOST)
+        .post('/app')
+        .reply(200, { reCode: 200, reData: credsWithHost });
+
+      await api.getDeviceList();
+      await api.connectMqtt();
+
+      expect(mockedMqttConnect).toHaveBeenCalledWith(expect.objectContaining({
+        host: credsWithHost.host,
+      }));
+    });
+
     it('should fallback to device mqttServer when endpoint absent', async () => {
       nock.cleanAll();
       const credsNoEndpoint = { ...mockCreds, iotEndpoint: undefined };
