@@ -19,8 +19,8 @@ export interface GetDeviceListResponse {
 }
 
 export interface IotCredentials {
-  accessKey: string;
-  secretKey: string;
+  accessKeyId: string;
+  secretAccessKey: string;
   sessionToken: string;
   expiration: string; // ISO 8601 date string
   iotPolicy: string;
