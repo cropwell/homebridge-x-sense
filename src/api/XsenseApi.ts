@@ -235,6 +235,7 @@ export class XsenseApi extends EventEmitter {
             device_name: d.deviceName,
             type_id: d.deviceType,
             device_model: d.deviceModel ?? d.deviceType,
+            mqttServer: house.mqttServer ?? house.mqtt_server,
             status: d.status ?? {},
           });
         }
@@ -280,10 +281,14 @@ export class XsenseApi extends EventEmitter {
     try {
       const creds = await this.getIotCredential();
 
-      const endpoint = creds.iotEndpoint;
+      let endpoint = creds.iotEndpoint;
       if (!endpoint) {
-        this.log.error('Cannot connect to MQTT: missing IoT endpoint.');
-        return;
+        endpoint = this.lastKnownDevices[0]?.mqttServer;
+        if (!endpoint) {
+          this.log.error('Cannot connect to MQTT: missing IoT endpoint.');
+          return;
+        }
+        this.log.warn('IoT endpoint missing from credential response, using mqttServer from device list.');
       }
 
       // Proactively refresh credentials 5 minutes before they expire
