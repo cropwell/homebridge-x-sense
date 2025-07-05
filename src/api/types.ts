@@ -6,6 +6,7 @@ export interface DeviceInfo {
   type_id: number;
   device_model: string;
   mqttServer?: string;
+  mqttRegion?: string;
   status: {
     battery: number;
     online: number;

@@ -236,6 +236,7 @@ export class XsenseApi extends EventEmitter {
             type_id: d.deviceType,
             device_model: d.deviceModel ?? d.deviceType,
             mqttServer: house.mqttServer ?? house.mqtt_server,
+            mqttRegion: house.mqttRegion ?? house.mqtt_region,
             status: d.status ?? {},
           });
         }
@@ -261,9 +262,7 @@ export class XsenseApi extends EventEmitter {
         raw.mqtt_server ?? raw.host ?? raw.endpoint,
     };
 
-    if (!creds.iotEndpoint) {
-      this.log.warn('IoT endpoint missing from credential response.');
-    }
+
 
     return creds;
   }
@@ -284,12 +283,17 @@ export class XsenseApi extends EventEmitter {
 
       let endpoint = creds.iotEndpoint;
       if (!endpoint) {
-        endpoint = this.lastKnownDevices[0]?.mqttServer;
-        if (!endpoint) {
+        const device = this.lastKnownDevices[0];
+        endpoint = device?.mqttServer;
+        if (endpoint) {
+          this.log.warn('IoT endpoint missing from credential response, using mqttServer from device list.');
+        } else if (device?.mqttRegion) {
+          endpoint = `${device.mqttRegion}.x-sense-iot.com`;
+          this.log.warn('IoT endpoint missing from credential response, using mqttRegion from device list.');
+        } else {
           this.log.error('Cannot connect to MQTT: missing IoT endpoint.');
           return;
         }
-        this.log.warn('IoT endpoint missing from credential response, using mqttServer from device list.');
       }
 
       const sanitized = endpoint.replace(/^wss?:\/\//, '').replace(/\/?mqtt$/, '');

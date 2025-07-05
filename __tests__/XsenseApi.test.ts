@@ -115,7 +115,7 @@ describe('XsenseApi', () => {
     });
 
     it('should fetch and return the device list', async () => {
-      const houses = [{ houseId: 'h1' }];
+      const houses = [{ houseId: 'h1', mqttServer: 'house.endpoint', mqttRegion: 'eu-central-1' }];
       const stations = { stations: [{ stationSn: 's1', stationName: 'Station', devices: [{ deviceId: '123', deviceName: 'Living Room', deviceType: 1 }] }] };
       nock(API_HOST).post('/app').reply(200, { reCode: 200, reData: houses }).post('/app').reply(200, { reCode: 200, reData: stations });
 
@@ -129,6 +129,8 @@ describe('XsenseApi', () => {
           device_name: 'Living Room',
           type_id: 1,
           device_model: 1,
+          mqttServer: 'house.endpoint',
+          mqttRegion: 'eu-central-1',
           status: {},
         },
       ]);
@@ -168,7 +170,7 @@ describe('XsenseApi', () => {
       const mockDevices = { stations: [{ stationSn: 's1', stationName: 'Station', devices: [{ deviceId: '456', deviceName: 'Device', deviceType: 1 }] }] };
       const scope2 = nock(API_HOST)
         .post('/app')
-        .reply(200, { reCode: 200, reData: [{ houseId: 'h1' }] })
+        .reply(200, { reCode: 200, reData: [{ houseId: 'h1', mqttServer: 'house.endpoint', mqttRegion: 'eu-central-1' }] })
         .post('/app')
         .reply(200, { reCode: 200, reData: mockDevices });
 
@@ -182,6 +184,8 @@ describe('XsenseApi', () => {
           device_name: 'Device',
           type_id: 1,
           device_model: 1,
+          mqttServer: 'house.endpoint',
+          mqttRegion: 'eu-central-1',
           status: {},
         },
       ]);
@@ -242,7 +246,7 @@ describe('XsenseApi', () => {
       // Mock device list and credentials
       nock(API_HOST)
         .post('/app')
-        .reply(200, { reCode: 200, reData: [{ houseId: 'h1', mqttServer: 'house.endpoint' }] })
+        .reply(200, { reCode: 200, reData: [{ houseId: 'h1', mqttServer: 'house.endpoint', mqttRegion: 'eu-central-1' }] })
         .post('/app')
         .reply(200, { reCode: 200, reData: { stations: mockDevices.map(d => ({ stationSn: d.station_sn, stationName: d.device_name, devices: [d] })) } });
       nock(API_HOST)
@@ -277,7 +281,7 @@ describe('XsenseApi', () => {
       const credsWithoutEndpoint = { ...mockCreds, iotEndpoint: undefined, mqttServer: 'alt.endpoint' };
       nock(API_HOST)
         .post('/app')
-        .reply(200, { reCode: 200, reData: [{ houseId: 'h1', mqttServer: 'house.endpoint' }] })
+        .reply(200, { reCode: 200, reData: [{ houseId: 'h1', mqttServer: 'house.endpoint', mqttRegion: 'eu-central-1' }] })
         .post('/app')
         .reply(200, { reCode: 200, reData: { stations: mockDevices.map(d => ({ stationSn: d.station_sn, stationName: d.device_name, devices: [d] })) } });
       nock(API_HOST)
@@ -297,7 +301,7 @@ describe('XsenseApi', () => {
       const credsWithHost = { ...mockCreds, iotEndpoint: undefined, host: 'host.endpoint' };
       nock(API_HOST)
         .post('/app')
-        .reply(200, { reCode: 200, reData: [{ houseId: 'h1', mqttServer: 'house.endpoint' }] })
+        .reply(200, { reCode: 200, reData: [{ houseId: 'h1', mqttServer: 'house.endpoint', mqttRegion: 'eu-central-1' }] })
         .post('/app')
         .reply(200, { reCode: 200, reData: { stations: mockDevices.map(d => ({ stationSn: d.station_sn, stationName: d.device_name, devices: [d] })) } });
       nock(API_HOST)
@@ -317,7 +321,7 @@ describe('XsenseApi', () => {
       const credsNoEndpoint = { ...mockCreds, iotEndpoint: undefined };
       nock(API_HOST)
         .post('/app')
-        .reply(200, { reCode: 200, reData: [{ houseId: 'h1', mqttServer: 'house.endpoint' }] })
+        .reply(200, { reCode: 200, reData: [{ houseId: 'h1', mqttServer: 'house.endpoint', mqttRegion: 'eu-central-1' }] })
         .post('/app')
         .reply(200, { reCode: 200, reData: { stations: mockDevices.map(d => ({ stationSn: d.station_sn, stationName: d.device_name, devices: [d] })) } });
       nock(API_HOST)
@@ -329,6 +333,26 @@ describe('XsenseApi', () => {
 
       expect(mockedMqttConnect).toHaveBeenCalledWith(expect.objectContaining({
         host: 'house.endpoint',
+      }));
+    });
+
+    it('should fallback to mqttRegion when no mqttServer present', async () => {
+      nock.cleanAll();
+      const credsNoEndpoint = { ...mockCreds, iotEndpoint: undefined };
+      nock(API_HOST)
+        .post('/app')
+        .reply(200, { reCode: 200, reData: [{ houseId: 'h1', mqttRegion: 'eu-central-1' }] })
+        .post('/app')
+        .reply(200, { reCode: 200, reData: { stations: mockDevices.map(d => ({ stationSn: d.station_sn, stationName: d.device_name, devices: [d] })) } });
+      nock(API_HOST)
+        .post('/app')
+        .reply(200, { reCode: 200, reData: credsNoEndpoint });
+
+      await api.getDeviceList();
+      await api.connectMqtt();
+
+      expect(mockedMqttConnect).toHaveBeenCalledWith(expect.objectContaining({
+        host: 'eu-central-1.x-sense-iot.com',
       }));
     });
 
@@ -344,7 +368,7 @@ describe('XsenseApi', () => {
       nock.cleanAll(); // Clear previous mocks
       nock(API_HOST)
         .post('/app')
-        .reply(200, { reCode: 200, reData: [{ houseId: 'h1', mqttServer: 'house.endpoint' }] })
+        .reply(200, { reCode: 200, reData: [{ houseId: 'h1', mqttServer: 'house.endpoint', mqttRegion: 'eu-central-1' }] })
         .post('/app')
         .reply(200, { reCode: 200, reData: { stations: mockDevices.map(d => ({ stationSn: d.station_sn, stationName: d.device_name, devices: [d] })) } });
       nock(API_HOST).post('/app').reply(200, { reCode: 200, reData: freshMockCreds });
