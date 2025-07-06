@@ -56,6 +56,10 @@ You can configure this plugin via the Homebridge UI. The available options are:
     3.  Try restarting Homebridge.
 *   **Status Not Updating:** The plugin relies on a real-time MQTT connection. If you see "MQTT client error" or "MQTT client connection closed" in the logs, it may indicate a network issue between your Homebridge server and the X-Sense cloud. The plugin will attempt to reconnect automatically. The periodic polling will also serve as a backup to refresh the state.
 
+## Acknowledgements
+
+This plugin was inspired by the [ha-xsense-component_test](https://github.com/Jarnsen/ha-xsense-component_test) project and would not have been possible without the excellent work of [theosnel](https://github.com/theosnel) in decoding the X-Sense API in the [python-xsense](https://github.com/theosnel/python-xsense/tree/develop/xsense) project.
+
 ## Disclaimer
 
 This plugin is not officially endorsed by or affiliated with X-Sense. It is a community-driven project that relies on an unofficial API. The API may change at any time, which could break this plugin. Use at your own risk.
