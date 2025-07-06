@@ -7,7 +7,7 @@ This is a [Homebridge](https://homebridge.io) plugin for integrating X-Sense smo
 ## Features
 
 *   **Real-time Updates:** Uses a persistent MQTT connection for instant notifications of alarms and status changes.
-*   **Device Support:** Exposes X-Sense combination Smoke & Carbon Monoxide alarms as individual HomeKit accessories.
+*   **Device Support:** Exposes combination Smoke & Carbon Monoxide alarms, smoke-only models, and CO-only models with the correct HomeKit services.
 *   **Rich Notifications:** Provides status for:
     *   Smoke Detected
     *   Carbon Monoxide Detected
