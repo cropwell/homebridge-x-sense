@@ -5,6 +5,7 @@ import { DeviceInfo } from './api/types';
 import { XsenseApi } from './api/XsenseApi';
 import { SmokeAndCOSensorAccessory } from './accessories/SmokeAndCOSensorAccessory';
 import { SmokeSensorAccessory } from './accessories/SmokeSensorAccessory';
+import { CarbonMonoxideSensorAccessory } from './accessories/CarbonMonoxideSensorAccessory';
 import { detectCapabilities, DeviceCapability } from './deviceCapabilities';
 
 export class XSenseHomebridgePlatform implements DynamicPlatformPlugin {
@@ -12,7 +13,7 @@ export class XSenseHomebridgePlatform implements DynamicPlatformPlugin {
   public readonly Characteristic: typeof Characteristic = this.api.hap.Characteristic;
   public readonly accessories: PlatformAccessory[] = [];
   private xsenseApi?: XsenseApi;
-  private readonly accessoryHandlers = new Map<string, SmokeAndCOSensorAccessory | SmokeSensorAccessory>();
+  private readonly accessoryHandlers = new Map<string, SmokeAndCOSensorAccessory | SmokeSensorAccessory | CarbonMonoxideSensorAccessory>();
   private pollingInterval?: NodeJS.Timeout;
 
   constructor(
@@ -68,10 +69,16 @@ export class XSenseHomebridgePlatform implements DynamicPlatformPlugin {
         const existingAccessory = cachedAccessories.find(accessory => accessory.UUID === uuid);
 
         const createHandler = (acc: PlatformAccessory<DeviceInfo>) => {
-          if (capabilities.includes(DeviceCapability.CarbonMonoxide)) {
+          const hasSmoke = capabilities.includes(DeviceCapability.Smoke);
+          const hasCo = capabilities.includes(DeviceCapability.CarbonMonoxide);
+          if (hasSmoke && hasCo) {
             return new SmokeAndCOSensorAccessory(this, acc as PlatformAccessory<DeviceInfo>);
+          } else if (hasSmoke) {
+            return new SmokeSensorAccessory(this, acc as PlatformAccessory<DeviceInfo>);
+          } else if (hasCo) {
+            return new CarbonMonoxideSensorAccessory(this, acc as PlatformAccessory<DeviceInfo>);
           }
-          return new SmokeSensorAccessory(this, acc as PlatformAccessory<DeviceInfo>);
+          return new SmokeAndCOSensorAccessory(this, acc as PlatformAccessory<DeviceInfo>);
         };
 
         if (existingAccessory) {
