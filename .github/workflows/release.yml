@@ -1,0 +1,80 @@
+# .github/workflows/release.yml
+name: Create Release and Publish to npm
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - 'CHANGELOG.md'
+
+jobs:
+  release:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          registry-url: 'https://registry.npmjs.org'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Read version from package.json
+        id: version
+        run: echo "VERSION=$(node -p \"require('./package.json').version\")" >> $GITHUB_OUTPUT
+
+      - name: Check if tag already exists
+        run: |
+          VERSION_TAG="v${{ steps.version.outputs.VERSION }}"
+          if git rev-parse "$VERSION_TAG" >/dev/null 2>&1; then
+            echo "❌ Tag $VERSION_TAG already exists."
+            exit 1
+          fi
+
+      - name: Generate changelog
+        run: |
+          npx conventional-changelog -p angular -i CHANGELOG.md -s
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git add CHANGELOG.md
+          git commit -m "docs(changelog): update for v${{ steps.version.outputs.VERSION }}"
+          git push
+
+      - name: Create Git tag
+        run: |
+          VERSION_TAG="v${{ steps.version.outputs.VERSION }}"
+          git tag "$VERSION_TAG"
+          git push origin "$VERSION_TAG"
+
+      - name: Extract latest changelog section
+        id: changelog
+        run: |
+          CHANGELOG=$(awk '/^## \[v?${{ steps.version.outputs.VERSION }}\]/,/^## \[/' CHANGELOG.md | sed '$d')
+          echo 'CHANGELOG<<EOF' >> $GITHUB_ENV
+          echo "$CHANGELOG" >> $GITHUB_ENV
+          echo 'EOF' >> $GITHUB_ENV
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.version.outputs.VERSION }}
+          name: Release v${{ steps.version.outputs.VERSION }}
+          body: ${{ env.CHANGELOG }}
+
+      - run: npm run build --if-present
+
+      - name: Publish to npm
+        run: npm publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
