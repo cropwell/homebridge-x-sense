@@ -4,9 +4,12 @@ name: Create Release and Publish to npm
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - 'CHANGELOG.md'
 
 jobs:
   release:
+    if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     permissions:
       contents: write
