@@ -28,7 +28,6 @@
     "homebridge-plugin",
     "x-sense"
   ],
-  "author": "Andrew Trevers",
   "license": "Apache-2.0",
   "cpu": [
     "arm",
