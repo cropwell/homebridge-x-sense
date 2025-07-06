@@ -4,13 +4,16 @@ import { PLATFORM_NAME, PLUGIN_NAME } from './settings';
 import { DeviceInfo } from './api/types';
 import { XsenseApi } from './api/XsenseApi';
 import { SmokeAndCOSensorAccessory } from './accessories/SmokeAndCOSensorAccessory';
+import { SmokeSensorAccessory } from './accessories/SmokeSensorAccessory';
+import { CarbonMonoxideSensorAccessory } from './accessories/CarbonMonoxideSensorAccessory';
+import { detectCapabilities, DeviceCapability } from './deviceCapabilities';
 
 export class XSenseHomebridgePlatform implements DynamicPlatformPlugin {
   public readonly Service: typeof Service = this.api.hap.Service;
   public readonly Characteristic: typeof Characteristic = this.api.hap.Characteristic;
   public readonly accessories: PlatformAccessory[] = [];
   private xsenseApi?: XsenseApi;
-  private readonly accessoryHandlers = new Map<string, SmokeAndCOSensorAccessory>();
+  private readonly accessoryHandlers = new Map<string, SmokeAndCOSensorAccessory | SmokeSensorAccessory | CarbonMonoxideSensorAccessory>();
   private pollingInterval?: NodeJS.Timeout;
 
   constructor(
@@ -60,20 +63,35 @@ export class XSenseHomebridgePlatform implements DynamicPlatformPlugin {
       this.log.info(`Found ${sensorDevices.length} sensor devices to register.`);
 
       for (const device of sensorDevices) {
+        const capabilities = detectCapabilities(device.device_model);
+        device.capabilities = capabilities;
         const uuid = this.api.hap.uuid.generate(device.device_id);
         const existingAccessory = cachedAccessories.find(accessory => accessory.UUID === uuid);
+
+        const createHandler = (acc: PlatformAccessory<DeviceInfo>) => {
+          const hasSmoke = capabilities.includes(DeviceCapability.Smoke);
+          const hasCo = capabilities.includes(DeviceCapability.CarbonMonoxide);
+          if (hasSmoke && hasCo) {
+            return new SmokeAndCOSensorAccessory(this, acc as PlatformAccessory<DeviceInfo>);
+          } else if (hasSmoke) {
+            return new SmokeSensorAccessory(this, acc as PlatformAccessory<DeviceInfo>);
+          } else if (hasCo) {
+            return new CarbonMonoxideSensorAccessory(this, acc as PlatformAccessory<DeviceInfo>);
+          }
+          return new SmokeAndCOSensorAccessory(this, acc as PlatformAccessory<DeviceInfo>);
+        };
 
         if (existingAccessory) {
           this.log.info('Restoring existing accessory from cache:', device.device_name);
           existingAccessory.context = device;
           this.api.updatePlatformAccessories([existingAccessory]);
-          const handler = new SmokeAndCOSensorAccessory(this, existingAccessory as PlatformAccessory<DeviceInfo>);
+          const handler = createHandler(existingAccessory as PlatformAccessory<DeviceInfo>);
           this.accessoryHandlers.set(uuid, handler);
         } else {
           this.log.info('Registering new accessory:', device.device_name);
           const accessory = new this.api.platformAccessory<DeviceInfo>(device.device_name, uuid);
           accessory.context = device;
-          const handler = new SmokeAndCOSensorAccessory(this, accessory);
+          const handler = createHandler(accessory);
           this.accessoryHandlers.set(uuid, handler);
           this.api.registerPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, [accessory]);
         }
