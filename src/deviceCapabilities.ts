@@ -15,6 +15,7 @@ const MODEL_CAPABILITIES: Record<string, DeviceCapability[]> = {
   'XS01-WX': [DeviceCapability.Smoke],
   'XS03-iWX': [DeviceCapability.Smoke],
   'XS03-WX': [DeviceCapability.Smoke],
+  'XS0D-MR': [DeviceCapability.Smoke],
 };
 
 export function detectCapabilities(model: string): DeviceCapability[] {
