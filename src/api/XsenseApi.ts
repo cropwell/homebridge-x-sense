@@ -249,24 +249,7 @@ export class XsenseApi extends EventEmitter {
     return this.lastKnownDevices;
   }
 
-  public async getIotEndpoint(): Promise<string> {
-    if (this.iotEndpoint) {
-      return this.iotEndpoint;
-    }
-    if (!this.session) {
-      throw new Error('Not authenticated');
-    }
-    this.log.debug('Fetching IoT endpoint...');
-    const response = await axios.get(IOT_ENDPOINT_URL, {
-      headers: { Authorization: this.session.getIdToken().getJwtToken() },
-      proxy: false,
-    });
-    if (!response.data?.endpoint) {
-      throw new Error('Invalid endpoint response');
-    }
-    this.iotEndpoint = response.data.endpoint as string;
-    return this.iotEndpoint;
-  }
+  
 
   public async getIotCredential(): Promise<IotCredentials> {
     this.log.debug('Fetching IoT credentials...');
@@ -301,30 +284,9 @@ export class XsenseApi extends EventEmitter {
 
     try {
       const creds = await this.getIotCredential();
-      let endpoint: string | undefined;
-      try {
-        endpoint = await this.getIotEndpoint();
-      } catch (err) {
-        this.log.warn('Failed to fetch IoT endpoint via dedicated API, falling back to credential response.');
-        endpoint = creds.iotEndpoint;
-      }
-
-      if (!endpoint) {
-        endpoint = creds.iotEndpoint;
-      }
-      if (!endpoint) {
-        const device = this.lastKnownDevices[0];
-        endpoint = device?.mqttServer;
-        if (endpoint) {
-          this.log.warn('IoT endpoint missing from credential response, using mqttServer from device list.');
-        } else if (device?.mqttRegion) {
-          endpoint = `${device.mqttRegion}.x-sense-iot.com`;
-          this.log.warn('IoT endpoint missing from credential response, using mqttRegion from device list.');
-        } else {
-          this.log.error('Cannot connect to MQTT: missing IoT endpoint.');
-          return;
-        }
-      }
+      const endpoint = 'a3p56i1nw0xqwj-ats.iot.us-east-1.amazonaws.com';
+      const region = 'us-east-1';
+      this.log.debug(`Using hardcoded MQTT endpoint: ${endpoint}`);
 
       const sanitized = endpoint.replace(/^wss?:\/\//, '').replace(/\/?mqtt$/, '');
 
@@ -341,9 +303,6 @@ export class XsenseApi extends EventEmitter {
       const uniqueStationSns = [...new Set(this.lastKnownDevices.map(d => d.station_sn))];
 
       this.log.info(`Connecting to MQTT broker at wss://${sanitized}/mqtt`);
-
-      const regionMatch = sanitized.match(/\.iot\.([^.]+)\./);
-      const region = regionMatch?.[1] || this.lastKnownDevices[0]?.mqttRegion || 'us-east-1';
 
       const signOpts: any = {
         host: sanitized,
