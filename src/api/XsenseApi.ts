@@ -10,7 +10,7 @@ import {
 import { MqttClient, connect as mqttConnect } from 'mqtt';
 import aws4 from 'aws4';
 import { createHmac, createHash } from 'crypto';
-import { API_HOST, IOT_ENDPOINT_URL, CLIENT_TYPE, APP_VERSION, APP_CODE } from './constants';
+import { API_HOST, CLIENT_TYPE, APP_VERSION, APP_CODE } from './constants';
 import { DeviceInfo, IotCredentials, ClientInfo } from './types';
 
 export class XsenseApi extends EventEmitter {
@@ -25,7 +25,7 @@ export class XsenseApi extends EventEmitter {
   private mqttClient: MqttClient | null = null;
   private mqttRefreshTimer?: NodeJS.Timeout;
   private lastKnownDevices: DeviceInfo[] = [];
-  private iotEndpoint?: string;
+  
 
   private decodeSecret(encoded: string): Buffer {
     const value = Buffer.from(encoded, 'base64');
