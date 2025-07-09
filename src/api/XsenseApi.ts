@@ -67,7 +67,7 @@ export class XsenseApi extends EventEmitter {
     return md5.digest('hex');
   }
 
-  private async apiCall<T>(code: string, data: Record<string, any>, unauth = false): Promise<T> {
+  private async apiCall<T>(code: string, data: Record<string, any>, unauth = false, isRetry = false): Promise<T> {
     const payload = {
       ...data,
       clientType: CLIENT_TYPE,
@@ -85,6 +85,17 @@ export class XsenseApi extends EventEmitter {
     const response = await this.http.post('/app', payload, { headers });
 
     if (response.data.reCode !== 200) {
+      if (response.data.reMsg === 'NotAuthorizedException' && !isRetry) {
+        this.log.info('Session expired, attempting to log in again...');
+        try {
+          await this.login();
+          this.log.info('Re-login successful, retrying API call.');
+          return this.apiCall(code, data, unauth, true);
+        } catch (loginError) {
+          this.log.error('Re-login failed, giving up.', loginError);
+          throw new Error(response.data.reMsg); // Throw original error
+        }
+      }
       throw new Error(response.data.reMsg);
     }
     return response.data.reData as T;

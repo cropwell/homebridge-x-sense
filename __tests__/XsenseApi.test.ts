@@ -227,6 +227,40 @@ describe('XsenseApi', () => {
       await expect(api.getDeviceList()).rejects.toThrow('Invalid refresh token');
       expect(mockLogger.error).toHaveBeenCalledWith('Failed to refresh token. Please re-login.', refreshError);
     });
+
+    it('should re-login on NotAuthorizedException and retry the request', async () => {
+      const initialSession = {
+        getIdToken: () => ({ getJwtToken: () => 'expired-token', payload: { sub: 'user-sub' } }),
+        getAccessToken: () => ({ getJwtToken: () => 'expired-access' }),
+        getRefreshToken: () => ({ getToken: () => 'refresh-token' }),
+        isValid: () => true,
+      };
+      mockAuthenticateUser.mockImplementationOnce((_details, callbacks) => callbacks.onSuccess(initialSession));
+      await api.login();
+
+      // Mock the second login attempt (after the exception)
+      const newSession = {
+        getIdToken: () => ({ getJwtToken: () => 'new-valid-token', payload: { sub: 'user-sub' } }),
+        getAccessToken: () => ({ getJwtToken: () => 'new-access' }),
+        isValid: () => true,
+      };
+      mockAuthenticateUser.mockImplementationOnce((_details, callbacks) => callbacks.onSuccess(newSession));
+
+      const scope = nock(API_HOST)
+        .post('/app')
+        .reply(200, { reCode: 401, reMsg: 'NotAuthorizedException' }) // First call fails
+        .post('/app')
+        .reply(200, { reCode: 200, reData: [{ houseId: 'h1' }] }) // Second call succeeds
+        .post('/app')
+        .reply(200, { reCode: 200, reData: { stations: [] } });
+
+      await api.getDeviceList();
+
+      expect(scope.isDone()).toBe(true);
+      expect(mockAuthenticateUser).toHaveBeenCalledTimes(2); // Initial login + re-login
+      expect(mockLogger.info).toHaveBeenCalledWith('Session expired, attempting to log in again...');
+      expect(mockLogger.info).toHaveBeenCalledWith('Re-login successful, retrying API call.');
+    });
   });
 
   describe('MQTT Connection', () => {
